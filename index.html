@@ -74,6 +74,7 @@
     margin-bottom:12px;
     display:block;
   }
+  .step-desc{font-size:11px;color:var(--muted);margin:-8px 0 14px;line-height:1.6;}
 
   .file-btn{
     width:100%;
@@ -90,7 +91,7 @@
   .file-btn:active{border-color:var(--red);}
   input[type=file]{display:none;}
 
-  label.field{display:block;margin-bottom:14px;}
+  label.field{display:block;margin-bottom:12px;}
   label.field:last-child{margin-bottom:0;}
   label.field span{
     display:block;
@@ -115,10 +116,26 @@
   .row2{display:flex;gap:10px;}
   .row2 label.field{flex:1;}
 
-  .link-fetch-row{display:flex;gap:8px;margin-bottom:12px;}
-  .link-fetch-row input{flex:1;}
-  .btn-small{
+  .link-entry{
+    border:1px solid var(--panel-border);
     background:#0a0a09;
+    border-radius:3px;
+    padding:14px;
+    margin-bottom:12px;
+    position:relative;
+  }
+  .link-entry .remove-btn{
+    position:absolute;top:10px;right:10px;
+    background:none;border:none;color:var(--muted);
+    font-family:'Space Mono',monospace;font-size:14px;
+    cursor:pointer;padding:2px 6px;
+  }
+  .link-entry .remove-btn:active{color:var(--red);}
+
+  .fetch-row{display:flex;gap:8px;margin-bottom:10px;padding-right:26px;}
+  .fetch-row input{flex:1;}
+  .btn-small{
+    background:#141412;
     border:1px solid var(--panel-border);
     color:var(--text);
     font-family:'DotGothic16',monospace;
@@ -134,21 +151,29 @@
   .status-line{
     font-size:11px;
     color:var(--muted);
-    margin-bottom:12px;
+    margin-bottom:10px;
     min-height:14px;
   }
   .status-line.ok{color:#7fbf8f;}
   .status-line.err{color:var(--red);}
 
-  .clear-link{
-    font-size:11px;
-    color:var(--muted);
-    text-decoration:underline;
-    background:none;border:none;
+  .icon-title-row{display:flex;gap:8px;margin-bottom:10px;}
+  .icon-title-row input:first-child{width:64px;flex:none;text-align:center;}
+  .icon-title-row input:last-child{flex:1;}
+
+  .add-link-btn{
+    width:100%;
+    background:none;
+    border:1px solid var(--panel-border);
+    color:var(--red);
+    font-family:'DotGothic16',monospace;
+    font-size:13px;
+    letter-spacing:.05em;
+    padding:12px;
+    border-radius:3px;
     cursor:pointer;
-    padding:0;
-    margin-top:4px;
   }
+  .add-link-btn:active{border-color:var(--red);}
 
   details{border:1px solid var(--panel-border);background:var(--panel);border-radius:4px;margin-bottom:14px;}
   summary{
@@ -216,26 +241,10 @@
   </div>
 
   <div class="section">
-    <span class="step-label">02 — リンクを追加（任意）</span>
-    <div class="link-fetch-row">
-      <input type="url" id="urlInput" placeholder="https://vrchat.com/home/world/... など">
-      <button class="btn-small" id="fetchBtn" type="button">取得</button>
-    </div>
-    <div class="status-line" id="statusLine"></div>
-    <label class="field">
-      <span>サイト名</span>
-      <input type="text" id="siteNameInput" placeholder="例: VRChat / YouTube" maxlength="30">
-    </label>
-    <label class="field">
-      <span>タイトル</span>
-      <input type="text" id="linkTitleInput" placeholder="ワールド名・曲名など" maxlength="80">
-    </label>
-    <label class="field">
-      <span>サムネイル画像（自動取得できない場合はここから手動で）</span>
-      <button class="file-btn" id="thumbBtn" type="button">サムネイル画像を選ぶ</button>
-      <input type="file" id="thumbInput" accept="image/*">
-    </label>
-    <button class="clear-link" id="clearLink">リンク情報をクリア</button>
+    <span class="step-label">02 — リンクを追加（任意・いくつでも）</span>
+    <div class="step-desc">アイコン（♪ 🌐 など任意の記号）とサムネイルは省略できます。省略した分は左に詰まります。</div>
+    <div id="linksContainer"></div>
+    <button class="add-link-btn" id="addLinkBtn" type="button">＋ リンクを追加</button>
   </div>
 
   <div class="section">
@@ -281,14 +290,8 @@ const ctx = canvas.getContext('2d');
 
 const fileBtn = document.getElementById('fileBtn');
 const fileInput = document.getElementById('fileInput');
-const thumbBtn = document.getElementById('thumbBtn');
-const thumbInput = document.getElementById('thumbInput');
-const urlInput = document.getElementById('urlInput');
-const fetchBtn = document.getElementById('fetchBtn');
-const statusLine = document.getElementById('statusLine');
-const siteNameInput = document.getElementById('siteNameInput');
-const linkTitleInput = document.getElementById('linkTitleInput');
-const clearLinkBtn = document.getElementById('clearLink');
+const linksContainer = document.getElementById('linksContainer');
+const addLinkBtn = document.getElementById('addLinkBtn');
 const nameInput = document.getElementById('nameInput');
 const dateInput = document.getElementById('dateInput');
 const marginInput = document.getElementById('marginInput');
@@ -300,18 +303,18 @@ const DEFAULT_MARGIN = Math.round(REF_W * 0.026);
 marginInput.value = DEFAULT_MARGIN;
 
 let img = null;
-let linkImage = null;
 let theme = 'cream';
+let links = [];      // {id, icon, title, thumb, dom:{...}}
+let linkSeq = 0;
 
 const THEMES = {
-  cream: { bg:'#E7E2D6', text:'#161513', muted:'#6b665c', cardBg:'#DAD4C4', border:'#c9c2af' },
-  white: { bg:'#FFFFFF', text:'#131313', muted:'#7a7a7a', cardBg:'#F1F1F1', border:'#dcdcdc' },
-  black: { bg:'#141414', text:'#F2F0E9', muted:'#8a8a86', cardBg:'#1f1f1e', border:'#33332f' },
+  cream: { bg:'#E7E2D6', text:'#161513', muted:'#6b665c', border:'#c9c2af' },
+  white: { bg:'#FFFFFF', text:'#131313', muted:'#7a7a7a', border:'#dcdcdc' },
+  black: { bg:'#141414', text:'#F2F0E9', muted:'#8a8a86', border:'#33332f' },
 };
 
 function openPicker(){ fileInput.click(); }
 fileBtn.addEventListener('click', openPicker);
-thumbBtn.addEventListener('click', () => thumbInput.click());
 canvas.addEventListener('click', () => { if(!img) openPicker(); });
 
 fileInput.addEventListener('change', (e) => {
@@ -331,79 +334,121 @@ fileInput.addEventListener('change', (e) => {
   reader.readAsDataURL(file);
 });
 
-thumbInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const image = new Image();
-    image.onload = () => {
-      linkImage = image;
-      thumbBtn.textContent = 'サムネイルを変更する';
-      draw();
-    };
-    image.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-});
-
-function setStatus(text, kind){
-  statusLine.textContent = text || '';
-  statusLine.className = 'status-line' + (kind ? ' ' + kind : '');
-}
-
-function loadLinkImage(rawUrl){
+function loadImageCORS(rawUrl){
   return new Promise((resolve) => {
     const proxied = 'https://images.weserv.nl/?url=' + encodeURIComponent(rawUrl.replace(/^https?:\/\//,''));
     const im = new Image();
     im.crossOrigin = 'anonymous';
-    im.onload = () => { linkImage = im; resolve(true); };
-    im.onerror = () => { resolve(false); };
+    im.onload = () => resolve(im);
+    im.onerror = () => resolve(null);
     im.src = proxied;
   });
 }
 
-fetchBtn.addEventListener('click', async () => {
-  const url = urlInput.value.trim();
-  if(!url){ setStatus('URLを入力してください', 'err'); return; }
-  fetchBtn.disabled = true;
-  setStatus('取得中…');
-  try{
-    const api = 'https://api.microlink.io/?url=' + encodeURIComponent(url);
-    const res = await fetch(api);
-    const json = await res.json();
-    if(json.status !== 'success') throw new Error('failed');
-    const d = json.data;
-    if(!siteNameInput.value){
-      siteNameInput.value = d.publisher || (new URL(url).hostname.replace('www.',''));
-    }
-    if(!linkTitleInput.value){
-      linkTitleInput.value = d.title || '';
-    }
-    const imgUrl = (d.image && d.image.url) || (d.logo && d.logo.url) || '';
-    let imgOk = false;
-    if(imgUrl){ imgOk = await loadLinkImage(imgUrl); }
-    setStatus(imgOk || d.title ? '取得しました。内容は自由に編集できます' : '一部の情報のみ取得できました', 'ok');
-  }catch(err){
-    setStatus('自動取得できませんでした。下の項目に手動で入力してください', 'err');
-  }
-  fetchBtn.disabled = false;
-  draw();
-});
+function loadImageLocal(file){
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => resolve(null);
+      im.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
-clearLinkBtn.addEventListener('click', () => {
-  urlInput.value = '';
-  siteNameInput.value = '';
-  linkTitleInput.value = '';
-  linkImage = null;
-  thumbBtn.textContent = 'サムネイル画像を選ぶ';
-  setStatus('');
-  draw();
-});
+function addLinkEntry(){
+  const id = ++linkSeq;
+  const entry = { id, icon:'', title:'', thumb:null };
+  links.push(entry);
 
-[siteNameInput, linkTitleInput, nameInput, dateInput, marginInput].forEach(el => {
-  el.addEventListener('input', draw);
-});
+  const wrapper = document.createElement('div');
+  wrapper.className = 'link-entry';
+  wrapper.innerHTML = `
+    <button class="remove-btn" type="button">×</button>
+    <div class="fetch-row">
+      <input type="url" placeholder="https://... （任意で自動取得）">
+      <button class="btn-small" type="button">取得</button>
+    </div>
+    <div class="status-line"></div>
+    <div class="icon-title-row">
+      <input type="text" placeholder="♪" maxlength="4">
+      <input type="text" placeholder="タイトル" maxlength="80">
+    </div>
+    <button class="file-btn thumb-btn" type="button">サムネイル画像を選ぶ（任意）</button>
+    <input type="file" accept="image/*" style="display:none">
+  `;
+  linksContainer.appendChild(wrapper);
+
+  const removeBtn = wrapper.querySelector('.remove-btn');
+  const urlInput = wrapper.querySelector('input[type=url]');
+  const fetchBtn = wrapper.querySelector('.btn-small');
+  const statusEl = wrapper.querySelector('.status-line');
+  const iconInput = wrapper.querySelector('.icon-title-row input:first-child');
+  const titleInput = wrapper.querySelector('.icon-title-row input:last-child');
+  const thumbBtn = wrapper.querySelector('.thumb-btn');
+  const thumbFile = wrapper.querySelector('input[type=file]');
+
+  removeBtn.addEventListener('click', () => {
+    links = links.filter(l => l.id !== id);
+    wrapper.remove();
+    draw();
+  });
+
+  iconInput.addEventListener('input', () => { entry.icon = iconInput.value; draw(); });
+  titleInput.addEventListener('input', () => { entry.title = titleInput.value; draw(); });
+
+  thumbBtn.addEventListener('click', () => thumbFile.click());
+  thumbFile.addEventListener('change', async () => {
+    const file = thumbFile.files[0];
+    if(!file) return;
+    const im = await loadImageLocal(file);
+    if(im){
+      entry.thumb = im;
+      thumbBtn.textContent = 'サムネイルを変更する';
+      draw();
+    }
+  });
+
+  fetchBtn.addEventListener('click', async () => {
+    const url = urlInput.value.trim();
+    if(!url){ statusEl.textContent = 'URLを入力してください'; statusEl.className='status-line err'; return; }
+    fetchBtn.disabled = true;
+    statusEl.textContent = '取得中…';
+    statusEl.className = 'status-line';
+    try{
+      const api = 'https://api.microlink.io/?url=' + encodeURIComponent(url);
+      const res = await fetch(api);
+      const json = await res.json();
+      if(json.status !== 'success') throw new Error('failed');
+      const d = json.data;
+      if(!titleInput.value && d.title){
+        titleInput.value = d.title;
+        entry.title = d.title;
+      }
+      const imgUrl = (d.image && d.image.url) || (d.logo && d.logo.url) || '';
+      let imOk = false;
+      if(imgUrl){
+        const im = await loadImageCORS(imgUrl);
+        if(im){ entry.thumb = im; thumbBtn.textContent = 'サムネイルを変更する'; imOk = true; }
+      }
+      statusEl.textContent = (imOk || d.title) ? '取得しました。内容は編集できます' : '一部のみ取得できました';
+      statusEl.className = 'status-line ok';
+    }catch(err){
+      statusEl.textContent = '自動取得できませんでした。手動で入力してください';
+      statusEl.className = 'status-line err';
+    }
+    fetchBtn.disabled = false;
+    draw();
+  });
+
+  draw();
+}
+
+addLinkBtn.addEventListener('click', addLinkEntry);
+
+[nameInput, dateInput, marginInput].forEach(el => el.addEventListener('input', draw));
 
 swatches.forEach(sw => {
   sw.addEventListener('click', () => {
@@ -414,42 +459,27 @@ swatches.forEach(sw => {
   });
 });
 
-function wrapAndDrawText(text, x, y, maxWidth, lineHeight, maxLines){
-  if(!text) return 0;
-  let lines = [];
-  let current = '';
-  for(let i = 0; i < text.length; i++){
-    const test = current + text[i];
-    if(ctx.measureText(test).width > maxWidth && current.length > 0){
-      lines.push(current);
-      current = text[i];
-      if(lines.length === maxLines) break;
-    } else {
-      current = test;
-    }
+function truncateToWidth(text, maxWidth){
+  if(!text) return '';
+  if(ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while(t.length > 0 && ctx.measureText(t + '…').width > maxWidth){
+    t = t.slice(0, -1);
   }
-  if(lines.length < maxLines && current) lines.push(current);
-  const consumed = lines.join('').length;
-  if(lines.length === maxLines && consumed < text.length){
-    let last = lines[maxLines - 1];
-    while(ctx.measureText(last + '…').width > maxWidth && last.length > 0){
-      last = last.slice(0, -1);
-    }
-    lines[maxLines - 1] = last + '…';
-  }
-  lines.forEach((line, idx) => ctx.fillText(line, x, y + idx * lineHeight));
-  return lines.length;
+  return t + '…';
 }
 
-function roundRectClip(x, y, w, h, r){
+function drawCoverImage(image, x, y, size){
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  ctx.rect(x, y, size, size);
   ctx.clip();
+  const iw = image.naturalWidth || image.width;
+  const ih = image.naturalHeight || image.height;
+  const scale = Math.max(size/iw, size/ih);
+  const dw = iw*scale, dh = ih*scale;
+  ctx.drawImage(image, x + (size-dw)/2, y + (size-dh)/2, dw, dh);
+  ctx.restore();
 }
 
 function draw(){
@@ -461,15 +491,13 @@ function draw(){
 
   const nameVal = nameInput.value.trim();
   const dateVal = dateInput.value.trim();
-  const siteVal = siteNameInput.value.trim();
-  const titleVal = linkTitleInput.value.trim();
-  const hasLink = !!(siteVal || titleVal || linkImage);
   const hasNameRow = !!(nameVal || dateVal);
+  const activeLinks = links.filter(l => (l.title && l.title.trim()) || l.thumb || (l.icon && l.icon.trim()));
 
   const nameRowH = hasNameRow ? W * 0.075 : W * 0.03;
-  const linkGap = W * 0.03;
-  const linkCardH = W * 0.17;
-  const footerH = nameRowH + (hasLink ? linkGap + linkCardH : 0) + margin * 0.8;
+  const lineH = W * 0.05;
+  const lineGap = W * 0.012;
+  const footerH = nameRowH + activeLinks.length * (lineH + lineGap) + margin * 0.7;
 
   const cardH = margin + photoH + footerH;
   canvas.width = W;
@@ -497,7 +525,6 @@ function draw(){
 
   let cursorY = margin + photoH;
 
-  // name / date row
   if(hasNameRow){
     const rowTextY = cursorY + nameRowH * 0.62;
     ctx.fillStyle = t.text;
@@ -515,53 +542,35 @@ function draw(){
   }
   cursorY += nameRowH;
 
-  // link card
-  if(hasLink){
-    cursorY += linkGap;
-    const cardX = margin;
-    const cardY = cursorY;
-    const cardW = photoW;
-    const thumbSize = linkCardH;
-    const radius = W * 0.006;
+  const thumbSize = lineH * 0.82;
+  activeLinks.forEach((link) => {
+    let x = margin;
+    const rowY = cursorY + (lineH - thumbSize) / 2;
+    const textY = cursorY + lineH * 0.66;
 
-    ctx.save();
-    ctx.fillStyle = t.cardBg;
-    roundRectClip(cardX, cardY, cardW, linkCardH, radius);
-    ctx.fillRect(cardX, cardY, cardW, linkCardH);
-    ctx.restore();
-
-    ctx.save();
-    roundRectClip(cardX, cardY, thumbSize, thumbSize, radius);
-    if(linkImage){
-      const iw = linkImage.naturalWidth || linkImage.width;
-      const ih = linkImage.naturalHeight || linkImage.height;
-      const scale = Math.max(thumbSize/iw, thumbSize/ih);
-      const dw = iw*scale, dh = ih*scale;
-      ctx.drawImage(linkImage, cardX + (thumbSize-dw)/2, cardY + (thumbSize-dh)/2, dw, dh);
-    } else {
-      ctx.fillStyle = t.border;
-      ctx.fillRect(cardX, cardY, thumbSize, thumbSize);
-      ctx.fillStyle = t.muted;
-      ctx.font = `${W*0.018}px 'Space Mono', monospace`;
-      ctx.textAlign = 'center';
-      ctx.fillText('LINK', cardX + thumbSize/2, cardY + thumbSize/2 + 6);
+    if(link.icon && link.icon.trim()){
+      ctx.fillStyle = t.text;
+      ctx.font = `${W*0.03}px 'Space Mono', monospace`;
       ctx.textAlign = 'left';
+      ctx.fillText(link.icon.trim(), x, textY);
+      x += ctx.measureText(link.icon.trim()).width + W*0.012;
     }
-    ctx.restore();
 
-    const textX = cardX + thumbSize + W*0.025;
-    const textMaxW = cardW - thumbSize - W*0.05;
+    if(link.thumb){
+      drawCoverImage(link.thumb, x, rowY, thumbSize);
+      x += thumbSize + W*0.014;
+    }
 
-    ctx.fillStyle = t.muted;
-    ctx.font = `${W*0.017}px 'DotGothic16', monospace`;
-    if(siteVal) ctx.fillText(siteVal.toUpperCase(), textX, cardY + linkCardH*0.28);
+    if(link.title && link.title.trim()){
+      ctx.fillStyle = t.text;
+      ctx.font = `700 ${W*0.026}px 'Space Mono', monospace`;
+      ctx.textAlign = 'left';
+      const maxW = (margin + photoW) - x;
+      ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
+    }
 
-    ctx.fillStyle = t.text;
-    ctx.font = `700 ${W*0.024}px 'Space Mono', monospace`;
-    wrapAndDrawText(titleVal, textX, cardY + linkCardH*0.52, textMaxW, W*0.032, 2);
-
-    cursorY += linkCardH;
-  }
+    cursorY += lineH + lineGap;
+  });
 }
 
 downloadBtn.addEventListener('click', () => {
@@ -577,7 +586,7 @@ downloadBtn.addEventListener('click', () => {
       URL.revokeObjectURL(url);
     }, 'image/png');
   }catch(err){
-    setStatus('保存に失敗しました。リンクのサムネイルを手動アップロードした画像に差し替えてから再度お試しください', 'err');
+    alert('保存に失敗しました。自動取得したサムネイルが原因の可能性があるため、該当リンクのサムネイルを手動アップロードに差し替えてから再度お試しください。');
   }
 });
 
