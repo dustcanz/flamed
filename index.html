@@ -347,9 +347,7 @@
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">FRAME MAKER</div>
-    <h1>写真にフレームを追加</h1>
-    <p>画像・リンク・名前と日付を入れると、下部にまとめて表示するフレームを作れます。</p>
+    <div class="eyebrow">FRAMED Hanger 2.0 Edit</div>
   </header>
 
   <div class="stage">
@@ -357,18 +355,17 @@
   </div>
 
   <div class="section">
-    <span class="step-label">01 — 画像を選択</span>
-    <button class="file-btn" id="fileBtn" type="button">タップして画像を選ぶ</button>
+    <span class="step-label">画像を選択</span>
+    <button class="file-btn" id="fileBtn" type="button">画像を選択</button>
     <input type="file" id="fileInput" accept="image/*">
   </div>
 
   <div class="section">
-    <span class="step-label">02 — リンクを追加（任意・いくつでも）</span>
-    <div class="step-desc">アイコンはプリセットか自由入力から選べます。アイコン・サムネイルは省略でき、省略した分は左に詰まります。</div>
+    <span class="step-label">リンクを追加</span>
 
     <div class="segmented" id="linkBgToggle">
-      <button type="button" data-mode="unified" class="active">背景：まとめて</button>
-      <button type="button" data-mode="individual">背景：個別</button>
+      <button type="button" data-mode="unified" class="active">バータイプA</button>
+      <button type="button" data-mode="individual">バータイプB</button>
     </div>
 
     <div id="linksContainer"></div>
@@ -376,21 +373,21 @@
   </div>
 
   <div class="section">
-    <span class="step-label">03 — 名前・日付（任意）</span>
+    <span class="step-label">名前・日付</span>
     <div class="row2">
       <label class="field">
         <span>名前</span>
-        <input type="text" id="nameInput" placeholder="YOUR NAME" maxlength="24">
+        <input type="text" id="nameInput" placeholder="NAME" maxlength="24">
       </label>
       <label class="field">
         <span>日付</span>
-        <input type="text" id="dateInput" placeholder="2026.08.08" maxlength="16">
+        <input type="text" id="dateInput" placeholder="DATE" maxlength="16">
       </label>
     </div>
   </div>
 
   <details>
-    <summary>詳細設定 — 余白の調整</summary>
+    <summary>余白の調整</summary>
     <div class="details-body">
       <label class="field">
         <span>外枠の余白（px, 基準幅1200pxに対する値）</span>
@@ -400,10 +397,10 @@
   </details>
 
   <div class="section">
-    <span class="step-label">04 — 見た目を選んで保存</span>
+    <span class="step-label">背景色を選択</span>
     <div class="theme-row">
-      <div class="swatch active" data-theme="cream"><i style="background:#E7E2D6"></i>CREAM</div>
-      <div class="swatch" data-theme="white"><i style="background:#FFFFFF"></i>WHITE</div>
+      <div class="swatch active" data-theme="white"><i style="background:#FFFFFF"></i>WHITE</div>
+      <div class="swatch" data-theme="cream"><i style="background:#E7E2D6"></i>CREAM</div>
       <div class="swatch" data-theme="black"><i style="background:#141414"></i>BLACK</div>
       <div class="swatch" data-theme="custom" id="customSwatch">
         <i id="customSwatchColor" style="background:#C9A9E0"></i>CUSTOM
@@ -412,7 +409,7 @@
     <button class="save-btn" id="downloadBtn" disabled>画像を保存</button>
   </div>
 
-  <footer>MADE WITH CLAUDE — 画像はブラウザ内でのみ処理されます</footer>
+  <footer>画像はブラウザ内でのみ処理されます</footer>
 </div>
 
 <div class="cp-overlay" id="cpOverlay">
