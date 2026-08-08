@@ -4,10 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>フレームメーカー</title>
-<!--Why aren't the changes I made to the code being reflected on the site?--> 
-<!--Please, I beg you, change with this update.-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
   :root{
     --bg:#060606;
@@ -159,9 +158,55 @@
   .status-line.ok{color:#7fbf8f;}
   .status-line.err{color:var(--red);}
 
-  .icon-title-row{display:flex;gap:8px;margin-bottom:10px;}
-  .icon-title-row input:first-child{width:64px;flex:none;text-align:center;}
-  .icon-title-row input:last-child{flex:1;}
+  .icon-title-row{display:flex;gap:8px;margin-bottom:10px;position:relative;}
+  .icon-btn{
+    width:46px;height:44px;flex:none;
+    background:#0a0a09;border:1px solid var(--panel-border);border-radius:3px;
+    color:var(--text);font-size:16px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .icon-btn.placeholder{color:var(--muted);font-size:13px;}
+  .icon-title-row input{flex:1;}
+
+  .icon-menu{
+    position:absolute;
+    top:calc(100% + 6px);
+    left:0;
+    width:min(260px, 90vw);
+    background:#161614;
+    border:1px solid var(--panel-border);
+    border-radius:4px;
+    padding:10px;
+    z-index:30;
+    box-shadow:0 12px 30px -10px rgba(0,0,0,.7);
+    display:none;
+  }
+  .icon-menu.open{display:block;}
+  .icon-grid{
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:6px;
+    margin-bottom:10px;
+  }
+  .icon-grid button{
+    aspect-ratio:1;
+    background:#0a0a09;
+    border:1px solid var(--panel-border);
+    border-radius:3px;
+    color:var(--text);
+    font-size:15px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .icon-grid button:active,.icon-grid button.selected{border-color:var(--red);color:var(--red);}
+  .icon-custom-row{display:flex;gap:6px;}
+  .icon-custom-row input{flex:1;font-size:13px;padding:8px 10px;}
+  .icon-clear-btn{
+    background:none;border:1px solid var(--panel-border);color:var(--muted);
+    font-family:'Space Mono',monospace;font-size:11px;
+    border-radius:3px;padding:0 10px;cursor:pointer;
+  }
 
   .add-link-btn{
     width:100%;
@@ -244,7 +289,7 @@
 
   <div class="section">
     <span class="step-label">02 — リンクを追加（任意・いくつでも）</span>
-    <div class="step-desc">アイコン（♪ 🌐 など任意の記号）とサムネイルは省略できます。省略した分は左に詰まります。</div>
+    <div class="step-desc">アイコンはプリセットか自由入力（絵文字など）から選べます。アイコン・サムネイルは省略でき、省略した分は左に詰まります。</div>
     <div id="linksContainer"></div>
     <button class="add-link-btn" id="addLinkBtn" type="button">＋ リンクを追加</button>
   </div>
@@ -304,15 +349,30 @@ const REF_W = 1200;
 const DEFAULT_MARGIN = Math.round(REF_W * 0.026);
 marginInput.value = DEFAULT_MARGIN;
 
+// Font Awesome solid presets: [faName, unicode hex]
+const ICON_PRESETS = [
+  ['location-dot', 'f3c5'],
+  ['headphones',   'f025'],
+  ['music',        'f001'],
+  ['link',         'f0c1'],
+  ['globe',        'f0ac'],
+  ['gamepad',      'f11b'],
+  ['camera',       'f030'],
+  ['star',         'f005'],
+  ['heart',        'f004'],
+  ['user-group',   'f0c0'],
+];
+
 let img = null;
 let theme = 'cream';
-let links = [];      // {id, icon, title, thumb, dom:{...}}
+let links = [];      // {id, icon:{kind,value,faClass}, title, thumb}
 let linkSeq = 0;
+let openMenuEl = null;
 
 const THEMES = {
-  cream: { bg:'#E7E2D6', text:'#161513', muted:'#6b665c', border:'#c9c2af' },
-  white: { bg:'#FFFFFF', text:'#131313', muted:'#7a7a7a', border:'#dcdcdc' },
-  black: { bg:'#141414', text:'#F2F0E9', muted:'#8a8a86', border:'#33332f' },
+  cream: { bg:'#E7E2D6', text:'#161513', muted:'#6b665c', border:'#c9c2af', cardBg:'#DAD4C4' },
+  white: { bg:'#FFFFFF', text:'#131313', muted:'#7a7a7a', border:'#dcdcdc', cardBg:'#F1F1F1' },
+  black: { bg:'#141414', text:'#F2F0E9', muted:'#8a8a86', border:'#33332f', cardBg:'#1f1f1e' },
 };
 
 function openPicker(){ fileInput.click(); }
@@ -360,13 +420,25 @@ function loadImageLocal(file){
   });
 }
 
+document.addEventListener('click', (e) => {
+  if(openMenuEl && !openMenuEl.contains(e.target) && !e.target.closest('.icon-btn')){
+    openMenuEl.classList.remove('open');
+    openMenuEl = null;
+  }
+});
+
 function addLinkEntry(){
   const id = ++linkSeq;
-  const entry = { id, icon:'', title:'', thumb:null };
+  const entry = { id, icon: { kind:'none', value:'', faClass:'' }, title:'', thumb:null };
   links.push(entry);
 
   const wrapper = document.createElement('div');
   wrapper.className = 'link-entry';
+
+  const iconGridHTML = ICON_PRESETS.map(([name, code]) =>
+    `<button type="button" data-name="${name}" data-code="${code}"><i class="fa-solid fa-${name}"></i></button>`
+  ).join('');
+
   wrapper.innerHTML = `
     <button class="remove-btn" type="button">×</button>
     <div class="fetch-row">
@@ -375,8 +447,15 @@ function addLinkEntry(){
     </div>
     <div class="status-line"></div>
     <div class="icon-title-row">
-      <input type="text" placeholder="♪" maxlength="4">
+      <button class="icon-btn placeholder" type="button">＋</button>
       <input type="text" placeholder="タイトル" maxlength="80">
+      <div class="icon-menu">
+        <div class="icon-grid">${iconGridHTML}</div>
+        <div class="icon-custom-row">
+          <input type="text" placeholder="自由入力（♪ など）" maxlength="4">
+          <button class="icon-clear-btn" type="button">なし</button>
+        </div>
+      </div>
     </div>
     <button class="file-btn thumb-btn" type="button">サムネイル画像を選ぶ（任意）</button>
     <input type="file" accept="image/*" style="display:none">
@@ -387,18 +466,67 @@ function addLinkEntry(){
   const urlInput = wrapper.querySelector('input[type=url]');
   const fetchBtn = wrapper.querySelector('.btn-small');
   const statusEl = wrapper.querySelector('.status-line');
-  const iconInput = wrapper.querySelector('.icon-title-row input:first-child');
-  const titleInput = wrapper.querySelector('.icon-title-row input:last-child');
+  const iconBtn = wrapper.querySelector('.icon-btn');
+  const iconMenu = wrapper.querySelector('.icon-menu');
+  const iconGridBtns = wrapper.querySelectorAll('.icon-grid button');
+  const customIconInput = wrapper.querySelector('.icon-custom-row input');
+  const clearIconBtn = wrapper.querySelector('.icon-clear-btn');
+  const titleInput = wrapper.querySelector('.icon-title-row > input[type=text]');
   const thumbBtn = wrapper.querySelector('.thumb-btn');
   const thumbFile = wrapper.querySelector('input[type=file]');
 
   removeBtn.addEventListener('click', () => {
     links = links.filter(l => l.id !== id);
     wrapper.remove();
+    if(openMenuEl === iconMenu) openMenuEl = null;
     draw();
   });
 
-  iconInput.addEventListener('input', () => { entry.icon = iconInput.value; draw(); });
+  iconBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if(openMenuEl && openMenuEl !== iconMenu) openMenuEl.classList.remove('open');
+    iconMenu.classList.toggle('open');
+    openMenuEl = iconMenu.classList.contains('open') ? iconMenu : null;
+  });
+
+  iconGridBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      const code = btn.dataset.code;
+      entry.icon = { kind:'fa', value: String.fromCodePoint(parseInt(code, 16)), faClass: 'fa-' + name };
+      iconBtn.className = 'icon-btn';
+      iconBtn.innerHTML = `<i class="fa-solid fa-${name}"></i>`;
+      customIconInput.value = '';
+      iconMenu.classList.remove('open');
+      openMenuEl = null;
+      draw();
+    });
+  });
+
+  customIconInput.addEventListener('input', () => {
+    const val = customIconInput.value;
+    if(val){
+      entry.icon = { kind:'custom', value: val, faClass:'' };
+      iconBtn.className = 'icon-btn';
+      iconBtn.textContent = val;
+    } else {
+      entry.icon = { kind:'none', value:'', faClass:'' };
+      iconBtn.className = 'icon-btn placeholder';
+      iconBtn.textContent = '＋';
+    }
+    draw();
+  });
+
+  clearIconBtn.addEventListener('click', () => {
+    entry.icon = { kind:'none', value:'', faClass:'' };
+    iconBtn.className = 'icon-btn placeholder';
+    iconBtn.textContent = '＋';
+    customIconInput.value = '';
+    iconMenu.classList.remove('open');
+    openMenuEl = null;
+    draw();
+  });
+
   titleInput.addEventListener('input', () => { entry.title = titleInput.value; draw(); });
 
   thumbBtn.addEventListener('click', () => thumbFile.click());
@@ -484,6 +612,17 @@ function drawCoverImage(image, x, y, size){
   ctx.restore();
 }
 
+function fillRoundRect(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function draw(){
   const W = REF_W;
   const margin = parseInt(marginInput.value, 10) || DEFAULT_MARGIN;
@@ -494,12 +633,20 @@ function draw(){
   const nameVal = nameInput.value.trim();
   const dateVal = dateInput.value.trim();
   const hasNameRow = !!(nameVal || dateVal);
-  const activeLinks = links.filter(l => (l.title && l.title.trim()) || l.thumb || (l.icon && l.icon.trim()));
+  const activeLinks = links.filter(l => (l.title && l.title.trim()) || l.thumb || (l.icon && l.icon.kind !== 'none'));
 
   const nameRowH = hasNameRow ? W * 0.075 : W * 0.03;
   const lineH = W * 0.05;
   const lineGap = W * 0.012;
-  const footerH = nameRowH + activeLinks.length * (lineH + lineGap) + margin * 0.7;
+  const blockPad = W * 0.022;
+  const gapBeforeBlock = W * 0.028;
+
+  const hasLinks = activeLinks.length > 0;
+  const blockH = hasLinks
+    ? activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPad * 2
+    : 0;
+
+  const footerH = nameRowH + (hasLinks ? gapBeforeBlock + blockH : 0) + margin * 0.7;
 
   const cardH = margin + photoH + footerH;
   canvas.width = W;
@@ -544,35 +691,49 @@ function draw(){
   }
   cursorY += nameRowH;
 
-  const thumbSize = lineH * 0.82;
-  activeLinks.forEach((link) => {
-    let x = margin;
-    const rowY = cursorY + (lineH - thumbSize) / 2;
-    const textY = cursorY + lineH * 0.66;
+  if(hasLinks){
+    cursorY += gapBeforeBlock;
+    ctx.fillStyle = t.cardBg;
+    fillRoundRect(margin, cursorY, photoW, blockH, W * 0.008);
 
-    if(link.icon && link.icon.trim()){
-      ctx.fillStyle = t.text;
-      ctx.font = `${W*0.03}px 'Space Mono', monospace`;
-      ctx.textAlign = 'left';
-      ctx.fillText(link.icon.trim(), x, textY);
-      x += ctx.measureText(link.icon.trim()).width + W*0.012;
-    }
+    let lineY = cursorY + blockPad;
+    const thumbSize = lineH * 0.8;
+    const innerLeft = margin + blockPad;
+    const innerRight = margin + photoW - blockPad;
 
-    if(link.thumb){
-      drawCoverImage(link.thumb, x, rowY, thumbSize);
-      x += thumbSize + W*0.014;
-    }
+    activeLinks.forEach((link) => {
+      let x = innerLeft;
+      const rowY = lineY + (lineH - thumbSize) / 2;
+      const textY = lineY + lineH * 0.68;
 
-    if(link.title && link.title.trim()){
-      ctx.fillStyle = t.text;
-      ctx.font = `700 ${W*0.026}px 'Space Mono', monospace`;
-      ctx.textAlign = 'left';
-      const maxW = (margin + photoW) - x;
-      ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
-    }
+      if(link.icon && link.icon.kind !== 'none'){
+        if(link.icon.kind === 'fa'){
+          ctx.font = `900 ${W*0.028}px 'Font Awesome 6 Free'`;
+        } else {
+          ctx.font = `${W*0.03}px 'Space Mono', monospace`;
+        }
+        ctx.fillStyle = t.text;
+        ctx.textAlign = 'left';
+        ctx.fillText(link.icon.value, x, textY);
+        x += ctx.measureText(link.icon.value).width + W*0.012;
+      }
 
-    cursorY += lineH + lineGap;
-  });
+      if(link.thumb){
+        drawCoverImage(link.thumb, x, rowY, thumbSize);
+        x += thumbSize + W*0.014;
+      }
+
+      if(link.title && link.title.trim()){
+        ctx.fillStyle = t.text;
+        ctx.font = `700 ${W*0.026}px 'Space Mono', monospace`;
+        ctx.textAlign = 'left';
+        const maxW = innerRight - x;
+        ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
+      }
+
+      lineY += lineH + lineGap;
+    });
+  }
 }
 
 downloadBtn.addEventListener('click', () => {
@@ -592,11 +753,13 @@ downloadBtn.addEventListener('click', () => {
   }
 });
 
+const fontsToLoad = [
+  "700 32px 'Space Mono'",
+  "32px 'DotGothic16'",
+  "900 32px 'Font Awesome 6 Free'"
+];
 if(document.fonts && document.fonts.ready){
-  Promise.all([
-    document.fonts.load("700 32px 'Space Mono'"),
-    document.fonts.load("32px 'DotGothic16'")
-  ]).then(draw).catch(draw);
+  Promise.all(fontsToLoad.map(f => document.fonts.load(f))).then(draw).catch(draw);
   document.fonts.ready.then(draw);
 }
 draw();
