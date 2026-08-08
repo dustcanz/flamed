@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!--Milk 4.0 Edit-->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -116,6 +117,21 @@
 
   .row2{display:flex;gap:10px;}
   .row2 label.field{flex:1;}
+
+  .segmented{display:flex;gap:8px;margin-bottom:16px;}
+  .segmented button{
+    flex:1;
+    background:#0a0a09;
+    border:1px solid var(--panel-border);
+    color:var(--muted);
+    font-family:'DotGothic16',monospace;
+    font-size:12px;
+    letter-spacing:.05em;
+    padding:10px 6px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .segmented button.active{border-color:var(--red);color:var(--text);}
 
   .link-entry{
     border:1px solid var(--panel-border);
@@ -246,9 +262,13 @@
     border-radius:3px;
     display:flex;flex-direction:column;align-items:center;gap:6px;
     cursor:pointer;
+    position:relative;
   }
   .swatch i{width:16px;height:16px;border-radius:50%;display:block;border:1px solid #333;}
   .swatch.active{border-color:var(--red);color:var(--text);}
+  .swatch input[type=color]{
+    position:absolute;inset:0;opacity:0;border:none;padding:0;cursor:pointer;
+  }
 
   .save-btn{
     width:100%;
@@ -289,7 +309,13 @@
 
   <div class="section">
     <span class="step-label">02 — リンクを追加（任意・いくつでも）</span>
-    <div class="step-desc">アイコンはプリセットか自由入力（絵文字など）から選べます。アイコン・サムネイルは省略でき、省略した分は左に詰まります。</div>
+    <div class="step-desc">アイコンはプリセットか自由入力から選べます。アイコン・サムネイルは省略でき、省略した分は左に詰まります。</div>
+
+    <div class="segmented" id="linkBgToggle">
+      <button type="button" data-mode="unified" class="active">背景：まとめて</button>
+      <button type="button" data-mode="individual">背景：個別</button>
+    </div>
+
     <div id="linksContainer"></div>
     <button class="add-link-btn" id="addLinkBtn" type="button">＋ リンクを追加</button>
   </div>
@@ -324,6 +350,10 @@
       <div class="swatch active" data-theme="cream"><i style="background:#E7E2D6"></i>CREAM</div>
       <div class="swatch" data-theme="white"><i style="background:#FFFFFF"></i>WHITE</div>
       <div class="swatch" data-theme="black"><i style="background:#141414"></i>BLACK</div>
+      <div class="swatch" data-theme="custom" id="customSwatch">
+        <i id="customSwatchColor" style="background:#C9A9E0"></i>CUSTOM
+        <input type="color" id="customColorInput" value="#C9A9E0">
+      </div>
     </div>
     <button class="save-btn" id="downloadBtn" disabled>画像を保存</button>
   </div>
@@ -339,17 +369,19 @@ const fileBtn = document.getElementById('fileBtn');
 const fileInput = document.getElementById('fileInput');
 const linksContainer = document.getElementById('linksContainer');
 const addLinkBtn = document.getElementById('addLinkBtn');
+const linkBgToggle = document.getElementById('linkBgToggle');
 const nameInput = document.getElementById('nameInput');
 const dateInput = document.getElementById('dateInput');
 const marginInput = document.getElementById('marginInput');
 const downloadBtn = document.getElementById('downloadBtn');
 const swatches = document.querySelectorAll('.swatch');
+const customColorInput = document.getElementById('customColorInput');
+const customSwatchColor = document.getElementById('customSwatchColor');
 
 const REF_W = 1200;
 const DEFAULT_MARGIN = Math.round(REF_W * 0.026);
 marginInput.value = DEFAULT_MARGIN;
 
-// Font Awesome solid presets: [faName, unicode hex]
 const ICON_PRESETS = [
   ['location-dot', 'f3c5'],
   ['headphones',   'f025'],
@@ -365,15 +397,58 @@ const ICON_PRESETS = [
 
 let img = null;
 let theme = 'cream';
-let links = [];      // {id, icon:{kind,value,faClass}, title, thumb}
+let customColor = customColorInput.value;
+let linkBgMode = 'unified'; // 'unified' | 'individual'
+let links = [];
 let linkSeq = 0;
 let openMenuEl = null;
 
-const THEMES = {
+const PRESET_THEMES = {
   cream: { bg:'#E7E2D6', text:'#161513', muted:'#6b665c', border:'#c9c2af', cardBg:'#DAD4C4' },
   white: { bg:'#FFFFFF', text:'#131313', muted:'#7a7a7a', border:'#dcdcdc', cardBg:'#F1F1F1' },
   black: { bg:'#141414', text:'#F2F0E9', muted:'#8a8a86', border:'#33332f', cardBg:'#1f1f1e' },
 };
+
+function hexToRgb(hex){
+  const h = hex.replace('#','');
+  return {
+    r: parseInt(h.substring(0,2),16),
+    g: parseInt(h.substring(2,4),16),
+    b: parseInt(h.substring(4,6),16),
+  };
+}
+function rgbToHex(r,g,b){
+  const c = v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0');
+  return '#'+c(r)+c(g)+c(b);
+}
+function relativeLuminance(hex){
+  const {r,g,b} = hexToRgb(hex);
+  return (0.299*r + 0.587*g + 0.114*b) / 255;
+}
+function shade(hex, percent){
+  const {r,g,b} = hexToRgb(hex);
+  let nr,ng,nb;
+  if(percent < 0){
+    nr = r*(1+percent); ng = g*(1+percent); nb = b*(1+percent);
+  } else {
+    nr = r+(255-r)*percent; ng = g+(255-g)*percent; nb = b+(255-b)*percent;
+  }
+  return rgbToHex(nr,ng,nb);
+}
+function deriveCustomTheme(hex){
+  const isLight = relativeLuminance(hex) > 0.5;
+  return {
+    bg: hex,
+    text: isLight ? '#161513' : '#F2F0E9',
+    muted: isLight ? '#6b665c' : '#9a9a95',
+    border: isLight ? shade(hex,-0.18) : shade(hex,0.22),
+    cardBg: isLight ? shade(hex,-0.09) : shade(hex,0.12),
+  };
+}
+function getTheme(){
+  if(theme === 'custom') return deriveCustomTheme(customColor);
+  return PRESET_THEMES[theme];
+}
 
 function openPicker(){ fileInput.click(); }
 fileBtn.addEventListener('click', openPicker);
@@ -578,6 +653,15 @@ function addLinkEntry(){
 
 addLinkBtn.addEventListener('click', addLinkEntry);
 
+linkBgToggle.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    linkBgToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    linkBgMode = btn.dataset.mode;
+    draw();
+  });
+});
+
 [nameInput, dateInput, marginInput].forEach(el => el.addEventListener('input', draw));
 
 swatches.forEach(sw => {
@@ -587,6 +671,15 @@ swatches.forEach(sw => {
     theme = sw.dataset.theme;
     draw();
   });
+});
+
+customColorInput.addEventListener('input', () => {
+  customColor = customColorInput.value;
+  customSwatchColor.style.background = customColor;
+  theme = 'custom';
+  swatches.forEach(s => s.classList.remove('active'));
+  document.getElementById('customSwatch').classList.add('active');
+  draw();
 });
 
 function truncateToWidth(text, maxWidth){
@@ -623,6 +716,36 @@ function fillRoundRect(x, y, w, h, r){
   ctx.fill();
 }
 
+function drawLinkContent(link, x0, y0, rowH, maxRight, t){
+  let x = x0;
+  const textY = y0 + rowH * 0.68;
+  const thumbSize = rowH * 0.8;
+  const rowY = y0 + (rowH - thumbSize) / 2;
+
+  if(link.icon && link.icon.kind !== 'none'){
+    ctx.font = link.icon.kind === 'fa'
+      ? `900 ${REF_W*0.028}px 'Font Awesome 6 Free'`
+      : `${REF_W*0.03}px 'Space Mono', monospace`;
+    ctx.fillStyle = t.text;
+    ctx.textAlign = 'left';
+    ctx.fillText(link.icon.value, x, textY);
+    x += ctx.measureText(link.icon.value).width + REF_W*0.012;
+  }
+
+  if(link.thumb){
+    drawCoverImage(link.thumb, x, rowY, thumbSize);
+    x += thumbSize + REF_W*0.014;
+  }
+
+  if(link.title && link.title.trim()){
+    ctx.fillStyle = t.text;
+    ctx.font = `700 ${REF_W*0.026}px 'Space Mono', monospace`;
+    ctx.textAlign = 'left';
+    const maxW = maxRight - x;
+    ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
+  }
+}
+
 function draw(){
   const W = REF_W;
   const margin = parseInt(marginInput.value, 10) || DEFAULT_MARGIN;
@@ -634,25 +757,32 @@ function draw(){
   const dateVal = dateInput.value.trim();
   const hasNameRow = !!(nameVal || dateVal);
   const activeLinks = links.filter(l => (l.title && l.title.trim()) || l.thumb || (l.icon && l.icon.kind !== 'none'));
+  const hasLinks = activeLinks.length > 0;
 
   const nameRowH = hasNameRow ? W * 0.075 : W * 0.03;
   const lineH = W * 0.05;
   const lineGap = W * 0.012;
   const blockPad = W * 0.022;
   const gapBeforeBlock = W * 0.028;
+  const rowGap = W * 0.016;
 
-  const hasLinks = activeLinks.length > 0;
-  const blockH = hasLinks
-    ? activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPad * 2
-    : 0;
+  let linksAreaH = 0;
+  if(hasLinks){
+    if(linkBgMode === 'individual'){
+      const rowH = lineH + blockPad * 2;
+      linksAreaH = activeLinks.length * rowH + (activeLinks.length - 1) * rowGap;
+    } else {
+      linksAreaH = activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPad * 2;
+    }
+  }
 
-  const footerH = nameRowH + (hasLinks ? gapBeforeBlock + blockH : 0) + margin * 0.7;
+  const footerH = nameRowH + (hasLinks ? gapBeforeBlock + linksAreaH : 0) + margin * 0.7;
 
   const cardH = margin + photoH + footerH;
   canvas.width = W;
   canvas.height = cardH;
 
-  const t = THEMES[theme];
+  const t = getTheme();
 
   ctx.fillStyle = t.bg;
   ctx.fillRect(0, 0, W, cardH);
@@ -693,46 +823,30 @@ function draw(){
 
   if(hasLinks){
     cursorY += gapBeforeBlock;
-    ctx.fillStyle = t.cardBg;
-    fillRoundRect(margin, cursorY, photoW, blockH, W * 0.008);
 
-    let lineY = cursorY + blockPad;
-    const thumbSize = lineH * 0.8;
-    const innerLeft = margin + blockPad;
-    const innerRight = margin + photoW - blockPad;
+    if(linkBgMode === 'unified'){
+      ctx.fillStyle = t.cardBg;
+      fillRoundRect(margin, cursorY, photoW, linksAreaH, W * 0.008);
 
-    activeLinks.forEach((link) => {
-      let x = innerLeft;
-      const rowY = lineY + (lineH - thumbSize) / 2;
-      const textY = lineY + lineH * 0.68;
-
-      if(link.icon && link.icon.kind !== 'none'){
-        if(link.icon.kind === 'fa'){
-          ctx.font = `900 ${W*0.028}px 'Font Awesome 6 Free'`;
-        } else {
-          ctx.font = `${W*0.03}px 'Space Mono', monospace`;
-        }
-        ctx.fillStyle = t.text;
-        ctx.textAlign = 'left';
-        ctx.fillText(link.icon.value, x, textY);
-        x += ctx.measureText(link.icon.value).width + W*0.012;
-      }
-
-      if(link.thumb){
-        drawCoverImage(link.thumb, x, rowY, thumbSize);
-        x += thumbSize + W*0.014;
-      }
-
-      if(link.title && link.title.trim()){
-        ctx.fillStyle = t.text;
-        ctx.font = `700 ${W*0.026}px 'Space Mono', monospace`;
-        ctx.textAlign = 'left';
-        const maxW = innerRight - x;
-        ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
-      }
-
-      lineY += lineH + lineGap;
-    });
+      let lineY = cursorY + blockPad;
+      const innerLeft = margin + blockPad;
+      const innerRight = margin + photoW - blockPad;
+      activeLinks.forEach((link) => {
+        drawLinkContent(link, innerLeft, lineY, lineH, innerRight, t);
+        lineY += lineH + lineGap;
+      });
+    } else {
+      const rowH = lineH + blockPad * 2;
+      let rowY = cursorY;
+      activeLinks.forEach((link) => {
+        ctx.fillStyle = t.cardBg;
+        fillRoundRect(margin, rowY, photoW, rowH, W * 0.008);
+        const innerLeft = margin + blockPad;
+        const innerRight = margin + photoW - blockPad;
+        drawLinkContent(link, innerLeft, rowY + blockPad, lineH, innerRight, t);
+        rowY += rowH + rowGap;
+      });
+    }
   }
 }
 
