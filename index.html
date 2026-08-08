@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!--Hanger 2.0 Edit-->
+<!--Zork 5.0 Edit-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>フレームメーカー</title>
@@ -690,15 +690,32 @@ fileInput.addEventListener('change', (e) => {
   reader.readAsDataURL(file);
 });
 
-function loadImageCORS(rawUrl){
+// Multiple independent proxies, tried in order — if one host/service is down,
+// rate-limited, or blocked for a particular image, the next one is tried.
+const IMG_PROXY_BUILDERS = [
+  raw => 'https://images.weserv.nl/?url=' + encodeURIComponent(raw.replace(/^https?:\/\//, '')),
+  raw => 'https://corsproxy.io/?url=' + encodeURIComponent(raw),
+  raw => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(raw),
+];
+
+function tryLoadImage(src, timeoutMs){
   return new Promise((resolve) => {
-    const proxied = 'https://images.weserv.nl/?url=' + encodeURIComponent(rawUrl.replace(/^https?:\/\//,''));
     const im = new Image();
     im.crossOrigin = 'anonymous';
-    im.onload = () => resolve(im);
-    im.onerror = () => resolve(null);
-    im.src = proxied;
+    let done = false;
+    const timer = setTimeout(() => { if(!done){ done = true; resolve(null); } }, timeoutMs);
+    im.onload = () => { if(!done){ done = true; clearTimeout(timer); resolve(im); } };
+    im.onerror = () => { if(!done){ done = true; clearTimeout(timer); resolve(null); } };
+    im.src = src;
   });
+}
+
+async function loadImageCORS(rawUrl){
+  for(const build of IMG_PROXY_BUILDERS){
+    const im = await tryLoadImage(build(rawUrl), 8000);
+    if(im) return im;
+  }
+  return null;
 }
 
 function loadImageLocal(file){
@@ -721,6 +738,56 @@ document.addEventListener('click', (e) => {
   }
 });
 
+function fetchWithTimeout(url, ms){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+function resolveUrl(maybeRelative, base){
+  try{ return new URL(maybeRelative, base).href; }catch(e){ return maybeRelative; }
+}
+
+// Attempt 1: Microlink (fast, gives clean title + image in one call)
+async function fetchViaMicrolink(url){
+  const api = 'https://api.microlink.io/?url=' + encodeURIComponent(url) + '&meta=true';
+  const res = await fetchWithTimeout(api, 9000);
+  const json = await res.json();
+  if(json.status !== 'success') throw new Error('microlink failed');
+  const d = json.data;
+  const title = d.title || '';
+  const image = (d.image && d.image.url) || (d.logo && d.logo.url) || '';
+  if(!title && !image) throw new Error('microlink empty');
+  return { title, image };
+}
+
+// Attempt 2 (fallback): fetch the raw page HTML through a CORS proxy and read
+// the og:title / og:image meta tags directly. Works for sites Microlink
+// can't reach or that are rate-limiting it.
+async function fetchViaRawHtml(url){
+  const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+  const res = await fetchWithTimeout(proxyUrl, 9000);
+  const html = await res.text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const meta = (prop) => {
+    const el = doc.querySelector(`meta[property="${prop}"]`) || doc.querySelector(`meta[name="${prop}"]`);
+    return el ? (el.getAttribute('content') || '') : '';
+  };
+  const title = meta('og:title') || meta('twitter:title') || (doc.querySelector('title') ? doc.querySelector('title').textContent : '') || '';
+  let image = meta('og:image') || meta('twitter:image') || '';
+  if(image) image = resolveUrl(image, url);
+  if(!title && !image) throw new Error('raw html empty');
+  return { title, image };
+}
+
+async function fetchOgpData(url){
+  try{ return await fetchViaMicrolink(url); }
+  catch(e){ /* fall through to next method */ }
+  try{ return await fetchViaRawHtml(url); }
+  catch(e){ /* fall through */ }
+  return null;
+}
+
 function addLinkEntry(){
   const id = ++linkSeq;
   const entry = { id, icon: { kind:'none', value:'', faClass:'' }, title:'', thumb:null };
@@ -736,8 +803,8 @@ function addLinkEntry(){
   wrapper.innerHTML = `
     <button class="remove-btn" type="button">×</button>
     <div class="fetch-row">
-      <input type="url" placeholder="https://... （任意で自動取得）">
-      <button class="btn-small" type="button">取得</button>
+      <input type="url" placeholder="LINK">
+      <button class="btn-small" type="button">GET</button>
     </div>
     <div class="status-line"></div>
     <div class="icon-title-row">
@@ -746,12 +813,12 @@ function addLinkEntry(){
       <div class="icon-menu">
         <div class="icon-grid">${iconGridHTML}</div>
         <div class="icon-custom-row">
-          <input type="text" placeholder="自由入力（♪ など）" maxlength="4">
+          <input type="text" placeholder="自由入力" maxlength="4">
           <button class="icon-clear-btn" type="button">なし</button>
         </div>
       </div>
     </div>
-    <button class="file-btn thumb-btn" type="button">サムネイル画像を選ぶ（任意）</button>
+    <button class="file-btn thumb-btn" type="button">サムネイル画像を挿入する</button>
     <input type="file" accept="image/*" style="display:none">
   `;
   linksContainer.appendChild(wrapper);
@@ -842,25 +909,30 @@ function addLinkEntry(){
     statusEl.textContent = '取得中…';
     statusEl.className = 'status-line';
     try{
-      const api = 'https://api.microlink.io/?url=' + encodeURIComponent(url);
-      const res = await fetch(api);
-      const json = await res.json();
-      if(json.status !== 'success') throw new Error('failed');
-      const d = json.data;
-      if(!titleInput.value && d.title){
-        titleInput.value = d.title;
-        entry.title = d.title;
+      const data = await fetchOgpData(url);
+      if(!data) throw new Error('no data');
+
+      if(!titleInput.value && data.title){
+        titleInput.value = data.title;
+        entry.title = data.title;
       }
-      const imgUrl = (d.image && d.image.url) || (d.logo && d.logo.url) || '';
+
       let imOk = false;
-      if(imgUrl){
-        const im = await loadImageCORS(imgUrl);
+      if(data.image){
+        statusEl.textContent = 'サムネイルを取得中…';
+        const im = await loadImageCORS(data.image);
         if(im){ entry.thumb = im; thumbBtn.textContent = 'サムネイルを変更する'; imOk = true; }
       }
-      statusEl.textContent = (imOk || d.title) ? '取得しました。内容は編集できます' : '一部のみ取得できました';
-      statusEl.className = 'status-line ok';
+
+      if(imOk || data.title){
+        statusEl.textContent = '取得しました。内容は編集可能です。';
+        statusEl.className = 'status-line ok';
+      } else {
+        statusEl.textContent = 'タイトル・画像が見つかりませんでした。手動入力してください。';
+        statusEl.className = 'status-line err';
+      }
     }catch(err){
-      statusEl.textContent = '自動取得できませんでした。手動で入力してください';
+      statusEl.textContent = '自動取得できませんでした。少し時間をおいて再試行するか、手動入力してください。';
       statusEl.className = 'status-line err';
     }
     fetchBtn.disabled = false;
