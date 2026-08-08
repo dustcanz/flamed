@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!--Milk 4.0 Edit-->
 <html lang="ja">
+<!--Zork 5.0 Edit-->
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/themes/nano.min.css">
 <style>
   :root{
     --bg:#060606;
@@ -352,7 +353,6 @@
       <div class="swatch" data-theme="black"><i style="background:#141414"></i>BLACK</div>
       <div class="swatch" data-theme="custom" id="customSwatch">
         <i id="customSwatchColor" style="background:#C9A9E0"></i>CUSTOM
-        <input type="color" id="customColorInput" value="#C9A9E0">
       </div>
     </div>
     <button class="save-btn" id="downloadBtn" disabled>画像を保存</button>
@@ -375,7 +375,6 @@ const dateInput = document.getElementById('dateInput');
 const marginInput = document.getElementById('marginInput');
 const downloadBtn = document.getElementById('downloadBtn');
 const swatches = document.querySelectorAll('.swatch');
-const customColorInput = document.getElementById('customColorInput');
 const customSwatchColor = document.getElementById('customSwatchColor');
 
 const REF_W = 1200;
@@ -397,7 +396,7 @@ const ICON_PRESETS = [
 
 let img = null;
 let theme = 'cream';
-let customColor = customColorInput.value;
+let customColor = '#C9A9E0';
 let linkBgMode = 'unified'; // 'unified' | 'individual'
 let links = [];
 let linkSeq = 0;
@@ -666,6 +665,7 @@ linkBgToggle.querySelectorAll('button').forEach(btn => {
 
 swatches.forEach(sw => {
   sw.addEventListener('click', () => {
+    if(sw.dataset.theme === 'custom') return;
     swatches.forEach(s => s.classList.remove('active'));
     sw.classList.add('active');
     theme = sw.dataset.theme;
@@ -673,13 +673,30 @@ swatches.forEach(sw => {
   });
 });
 
-customColorInput.addEventListener('input', () => {
-  customColor = customColorInput.value;
+const pickr = Pickr.create({
+  el: '#customSwatch',
+  theme: 'nano',
+  default: customColor,
+  components: {
+    preview: true,
+    opacity: false,
+    hue: true,
+    interaction: {
+      hex: true,
+      input: true,
+      save: true
+    }
+  }
+});
+
+pickr.on('save', (color) => {
+  customColor = color.toHEXA().toString();
   customSwatchColor.style.background = customColor;
   theme = 'custom';
   swatches.forEach(s => s.classList.remove('active'));
   document.getElementById('customSwatch').classList.add('active');
   draw();
+  pickr.hide();
 });
 
 function truncateToWidth(text, maxWidth){
@@ -762,17 +779,18 @@ function draw(){
   const nameRowH = hasNameRow ? W * 0.075 : W * 0.03;
   const lineH = W * 0.05;
   const lineGap = W * 0.012;
-  const blockPad = W * 0.022;
+  const blockPadUnified = W * 0.022;
+  const blockPadIndividual = W * 0.010;
   const gapBeforeBlock = W * 0.028;
   const rowGap = W * 0.016;
 
   let linksAreaH = 0;
   if(hasLinks){
     if(linkBgMode === 'individual'){
-      const rowH = lineH + blockPad * 2;
+      const rowH = lineH + blockPadIndividual * 2;
       linksAreaH = activeLinks.length * rowH + (activeLinks.length - 1) * rowGap;
     } else {
-      linksAreaH = activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPad * 2;
+      linksAreaH = activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPadUnified * 2;
     }
   }
 
@@ -828,26 +846,30 @@ function draw(){
       ctx.fillStyle = t.cardBg;
       fillRoundRect(margin, cursorY, photoW, linksAreaH, W * 0.008);
 
-      let lineY = cursorY + blockPad;
-      const innerLeft = margin + blockPad;
-      const innerRight = margin + photoW - blockPad;
+      let lineY = cursorY + blockPadUnified;
+      const innerLeft = margin + blockPadUnified;
+      const innerRight = margin + photoW - blockPadUnified;
       activeLinks.forEach((link) => {
         drawLinkContent(link, innerLeft, lineY, lineH, innerRight, t);
         lineY += lineH + lineGap;
       });
     } else {
-      const rowH = lineH + blockPad * 2;
+      const rowH = lineH + blockPadIndividual * 2;
       let rowY = cursorY;
       activeLinks.forEach((link) => {
         ctx.fillStyle = t.cardBg;
         fillRoundRect(margin, rowY, photoW, rowH, W * 0.008);
-        const innerLeft = margin + blockPad;
-        const innerRight = margin + photoW - blockPad;
-        drawLinkContent(link, innerLeft, rowY + blockPad, lineH, innerRight, t);
+        const innerLeft = margin + blockPadIndividual;
+        const innerRight = margin + photoW - blockPadIndividual;
+        drawLinkContent(link, innerLeft, rowY + blockPadIndividual, lineH, innerRight, t);
         rowY += rowH + rowGap;
       });
     }
   }
+}
+
+function generateSeed(){
+  return Math.random().toString(36).slice(2,8);
 }
 
 downloadBtn.addEventListener('click', () => {
@@ -856,7 +878,14 @@ downloadBtn.addEventListener('click', () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'framed-photo.png';
+
+      const now = new Date();
+      const stamp =
+        now.getFullYear().toString() +
+        String(now.getMonth()+1).padStart(2,'0') +
+        String(now.getDate()).padStart(2,'0');
+
+      a.download = `vrc-frame-${stamp}-${generateSeed()}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -878,5 +907,6 @@ if(document.fonts && document.fonts.ready){
 }
 draw();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.js"></script>
 </body>
 </html>
