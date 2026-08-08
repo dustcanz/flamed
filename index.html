@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!--Hanger 2.0 Edit-->
+<!--Hanger 2.1 Edit-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>フレームメーカー</title>
@@ -34,6 +34,14 @@
     font-size:12px;
     letter-spacing:.12em;
   }
+  .eyebrow-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .howto-link{
+    background:none;border:1px solid var(--panel-border);
+    color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;
+    letter-spacing:.04em;padding:5px 10px;border-radius:3px;cursor:pointer;
+    white-space:nowrap;
+  }
+  .howto-link:active{border-color:var(--red);color:var(--text);}
   h1{
     font-family:'DotGothic16',monospace;
     font-weight:400;
@@ -341,13 +349,19 @@
   .hex-copy{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:4px 6px;}
   .hex-copy.copied{color:#7fbf8f;}
   .cp-apply{margin-top:16px;}
+  .howto-list{margin:0;padding-left:20px;color:var(--text);font-size:13px;line-height:1.9;}
+  .howto-list li{margin-bottom:10px;}
+  .howto-list li:last-child{margin-bottom:0;}
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">FRAMED Hanger 2.0 Edit</div>
+    <div class="eyebrow-row">
+      <div class="eyebrow">FRAMED Hanger 2.0 Edit</div>
+      <button type="button" class="howto-link" id="howtoLink">使い方</button>
+    </div>
   </header>
 
   <div class="stage">
@@ -412,6 +426,21 @@
   <footer>画像はブラウザ内でのみ処理されます</footer>
 </div>
 
+<div class="cp-overlay" id="howtoOverlay">
+  <div class="cp-panel">
+    <div class="cp-header">
+      <span>使い方</span>
+      <button class="cp-close" id="howtoClose" type="button">×</button>
+    </div>
+    <ol class="howto-list">
+      <li>画像を選んでアップロードします（縦横どちらも自動でフィットします）。</li>
+      <li>必要ならリンクを追加します。URLを入れて「取得」を押すとタイトル・サムネイルを自動取得します。うまく取れない場合は手動で入力できます。</li>
+      <li>名前・日付は任意で入力します。</li>
+      <li>背景色を選び（CUSTOMで自由な色も選べます）、「画像を保存」で端末に保存します。</li>
+    </ol>
+  </div>
+</div>
+
 <div class="cp-overlay" id="cpOverlay">
   <div class="cp-panel">
     <div class="cp-header">
@@ -470,7 +499,7 @@ const ICON_PRESETS = [
 ];
 
 let img = null;
-let theme = 'cream';
+let theme = 'white';
 let customColor = '#C9A9E0';
 let linkBgMode = 'unified';
 let links = [];
@@ -672,6 +701,13 @@ hexCopyBtn.addEventListener('click', async () => {
 function openPicker(){ fileInput.click(); }
 fileBtn.addEventListener('click', openPicker);
 canvas.addEventListener('click', () => { if(!img) openPicker(); });
+
+const howtoLink = document.getElementById('howtoLink');
+const howtoOverlay = document.getElementById('howtoOverlay');
+const howtoClose = document.getElementById('howtoClose');
+howtoLink.addEventListener('click', () => howtoOverlay.classList.add('open'));
+howtoClose.addEventListener('click', () => howtoOverlay.classList.remove('open'));
+howtoOverlay.addEventListener('click', (e) => { if(e.target === howtoOverlay) howtoOverlay.classList.remove('open'); });
 
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
