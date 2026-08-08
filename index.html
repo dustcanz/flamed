@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!--Zork 5.0 Edit-->
+<!--Hanger 2.0 Edit-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>フレームメーカー</title>
@@ -925,14 +925,14 @@ function addLinkEntry(){
       }
 
       if(imOk || data.title){
-        statusEl.textContent = '取得しました。内容は編集可能です。';
+        statusEl.textContent = '取得しました。';
         statusEl.className = 'status-line ok';
       } else {
         statusEl.textContent = 'タイトル・画像が見つかりませんでした。手動入力してください。';
         statusEl.className = 'status-line err';
       }
     }catch(err){
-      statusEl.textContent = '自動取得できませんでした。少し時間をおいて再試行するか、手動入力してください。';
+      statusEl.textContent = '取得できませんでした。少しおいて再試行するか、手動入力してください。';
       statusEl.className = 'status-line err';
     }
     fetchBtn.disabled = false;
