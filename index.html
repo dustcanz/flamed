@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!--Hanger 2.1 Edit-->
+<!--Hanger 2.2 Edit-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Flamed</title>
@@ -380,6 +380,7 @@
     <div class="segmented" id="linkBgToggle">
       <button type="button" data-mode="unified" class="active">バータイプA</button>
       <button type="button" data-mode="individual">バータイプB</button>
+      <button type="button" data-mode="card">バータイプC</button>
     </div>
 
     <div id="linksContainer"></div>
@@ -1037,6 +1038,32 @@ function fillRoundRect(x, y, w, h, r){
   ctx.fill();
 }
 
+function wrapText(text, maxWidth, maxLines){
+  if(!text) return [];
+  let lines = [];
+  let current = '';
+  for(let i = 0; i < text.length; i++){
+    const test = current + text[i];
+    if(ctx.measureText(test).width > maxWidth && current.length > 0){
+      lines.push(current);
+      current = text[i];
+      if(lines.length === maxLines) break;
+    } else {
+      current = test;
+    }
+  }
+  if(lines.length < maxLines && current) lines.push(current);
+  const consumed = lines.join('').length;
+  if(lines.length === maxLines && consumed < text.length){
+    let last = lines[maxLines - 1];
+    while(ctx.measureText(last + '…').width > maxWidth && last.length > 0){
+      last = last.slice(0, -1);
+    }
+    lines[maxLines - 1] = last + '…';
+  }
+  return lines;
+}
+
 function drawLinkContent(link, x0, y0, rowH, maxRight, t){
   let x = x0;
   const textY = y0 + rowH * 0.68;
@@ -1060,10 +1087,44 @@ function drawLinkContent(link, x0, y0, rowH, maxRight, t){
 
   if(link.title && link.title.trim()){
     ctx.fillStyle = t.text;
-    ctx.font = `700 ${REF_W*0.026}px 'Space Mono', monospace`;
+    ctx.font = `400 ${REF_W*0.026}px 'Space Mono', monospace`;
     ctx.textAlign = 'left';
     const maxW = maxRight - x;
     ctx.fillText(truncateToWidth(link.title.trim(), maxW), x, textY);
+  }
+}
+
+// タイプC: larger card per link (bigger thumbnail, up to 2-line title), inspired by the original v2 layout
+function drawLinkContentCard(link, x0, y0, contentH, maxRight, t){
+  let x = x0;
+  const thumbSize = contentH;
+
+  if(link.icon && link.icon.kind !== 'none'){
+    ctx.font = link.icon.kind === 'fa'
+      ? `900 ${REF_W*0.036}px 'Font Awesome 6 Free'`
+      : `${REF_W*0.038}px 'Space Mono', monospace`;
+    ctx.fillStyle = t.text;
+    ctx.textAlign = 'left';
+    const iconTextY = y0 + contentH/2 + REF_W*0.013;
+    ctx.fillText(link.icon.value, x, iconTextY);
+    x += ctx.measureText(link.icon.value).width + REF_W*0.016;
+  }
+
+  if(link.thumb){
+    drawCoverImage(link.thumb, x, y0, thumbSize);
+    x += thumbSize + REF_W*0.02;
+  }
+
+  if(link.title && link.title.trim()){
+    ctx.fillStyle = t.text;
+    ctx.font = `400 ${REF_W*0.028}px 'Space Mono', monospace`;
+    ctx.textAlign = 'left';
+    const maxW = maxRight - x;
+    const lineHeight = REF_W * 0.036;
+    const lines = wrapText(link.title.trim(), maxW, 2);
+    const textBlockH = lines.length * lineHeight;
+    let ty = y0 + (contentH - textBlockH) / 2 + lineHeight * 0.78;
+    lines.forEach((line, idx) => ctx.fillText(line, x, ty + idx * lineHeight));
   }
 }
 
@@ -1080,25 +1141,33 @@ function draw(){
   const activeLinks = links.filter(l => (l.title && l.title.trim()) || l.thumb || (l.icon && l.icon.kind !== 'none'));
   const hasLinks = activeLinks.length > 0;
 
-  const nameRowH = hasNameRow ? W * 0.075 : W * 0.03;
+  const outerGap = W * 0.028;        // same gap used before the name/date row AND before the link area
+  const nameFontSize = W * 0.026;
+  const nameBlockH = nameFontSize * 1.15;
   const lineH = W * 0.05;
   const lineGap = W * 0.012;
   const blockPad = W * 0.022;       // horizontal padding + unified vertical padding
   const individualPadY = lineH * 0.05; // tighter vertical padding for individual boxes (~1.1x line height)
-  const gapBeforeBlock = W * 0.028;
   const rowGap = W * 0.014;
+  const cardRowH = W * 0.15;
+  const cardPad = W * 0.018;
 
   let linksAreaH = 0;
   if(hasLinks){
     if(linkBgMode === 'individual'){
       const rowH = lineH + individualPadY * 2;
       linksAreaH = activeLinks.length * rowH + (activeLinks.length - 1) * rowGap;
+    } else if(linkBgMode === 'card'){
+      linksAreaH = activeLinks.length * cardRowH + (activeLinks.length - 1) * rowGap;
     } else {
       linksAreaH = activeLinks.length * lineH + (activeLinks.length - 1) * lineGap + blockPad * 2;
     }
   }
 
-  const footerH = nameRowH + (hasLinks ? gapBeforeBlock + linksAreaH : 0) + margin * 0.7;
+  const footerH = (hasNameRow ? outerGap + nameBlockH : 0)
+                + (hasLinks ? outerGap + linksAreaH : 0)
+                + margin * 0.7
+                + (!hasNameRow && !hasLinks ? W * 0.03 : 0);
 
   const cardH = margin + photoH + footerH;
   canvas.width = W;
@@ -1127,9 +1196,10 @@ function draw(){
   let cursorY = margin + photoH;
 
   if(hasNameRow){
-    const rowTextY = cursorY + nameRowH * 0.62;
+    cursorY += outerGap;
+    const rowTextY = cursorY + nameFontSize * 0.8;
     ctx.fillStyle = t.text;
-    ctx.font = `700 ${W*0.026}px 'Space Mono', monospace`;
+    ctx.font = `700 ${nameFontSize}px 'Space Mono', monospace`;
     try { ctx.letterSpacing = '0.5px'; } catch(e){}
     ctx.textAlign = 'left';
     if(nameVal) ctx.fillText(nameVal.toUpperCase(), margin, rowTextY);
@@ -1140,11 +1210,11 @@ function draw(){
     }
     try { ctx.letterSpacing = '0px'; } catch(e){}
     ctx.textAlign = 'left';
+    cursorY += nameBlockH;
   }
-  cursorY += nameRowH;
 
   if(hasLinks){
-    cursorY += gapBeforeBlock;
+    cursorY += outerGap;
 
     if(linkBgMode === 'unified'){
       ctx.fillStyle = t.cardBg;
@@ -1156,6 +1226,16 @@ function draw(){
       activeLinks.forEach((link) => {
         drawLinkContent(link, innerLeft, lineY, lineH, innerRight, t);
         lineY += lineH + lineGap;
+      });
+    } else if(linkBgMode === 'card'){
+      let rowY = cursorY;
+      const innerLeft = margin + cardPad;
+      const innerRight = margin + photoW - cardPad;
+      activeLinks.forEach((link) => {
+        ctx.fillStyle = t.cardBg;
+        fillRoundRect(margin, rowY, photoW, cardRowH, W * 0.012);
+        drawLinkContentCard(link, innerLeft, rowY + cardPad, cardRowH - cardPad * 2, innerRight, t);
+        rowY += cardRowH + rowGap;
       });
     } else {
       const rowH = lineH + individualPadY * 2;
